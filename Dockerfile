@@ -1,5 +1,12 @@
 FROM alpine:3.22
 
+ENV FILE_FOR_GROUP=/var/run/docker.sock \
+    DOCKER_GROUP_NAME=docker \
+    ANGIE_USER=angie
+
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 RUN set -eux; \
     apk update; \
     apk upgrade --no-interactive; \
@@ -20,11 +27,9 @@ RUN set -eux; \
     echo "net.core.rmem_max=2500000 " >> /etc/sysctl.conf; \
     echo "net.core.wmem_max=2500000 " >> /etc/sysctl.conf; \
     ln -sf /dev/stdout /var/log/angie/access.log; \
-    ln -sf /dev/stderr /var/log/angie/error.log; \
-    addgroup --gid 996 docker; \
-    addgroup angie docker
+    ln -sf /dev/stderr /var/log/angie/error.log
 
 WORKDIR /app
 EXPOSE 80
-# STOPSIGNAL SIGQUIT
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["angie", "-g", "daemon off;"]
