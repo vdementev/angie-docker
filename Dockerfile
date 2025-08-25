@@ -6,13 +6,13 @@ RUN set -eux; \
     apk --no-cache add curl ca-certificates tzdata; \
     curl -o /etc/apk/keys/angie-signing.rsa https://angie.software/keys/angie-signing.rsa; \
     echo "https://download.angie.software/angie/alpine/v$(egrep -o \
-        '[0-9]+\.[0-9]+' /etc/alpine-release)/main" >> /etc/apk/repositories; \
+         '[0-9]+\.[0-9]+' /etc/alpine-release)/main" >> /etc/apk/repositories; \
     apk add --no-cache angie \
-                       angie-module-brotli \
-                       angie-module-cache-purge \
-                       angie-module-modsecurity \
-                       angie-module-zstd \
-                       angie-console-light; \
+            angie-module-brotli \
+            angie-module-cache-purge \
+            angie-module-modsecurity \
+            angie-module-zstd \
+            angie-console-light; \
     rm /etc/apk/keys/angie-signing.rsa; \
     rm -rf /var/cache/apk/*; \
     rm -rf /root/.cache; \
