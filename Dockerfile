@@ -30,7 +30,10 @@ RUN set -eux; \
     ln -sf /dev/stderr /var/log/angie/error.log
 
 WORKDIR /app
-EXPOSE 80
+
+EXPOSE 80/tcp
+EXPOSE 443/tcp
+EXPOSE 443/udp
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["angie", "-g", "daemon off;"]
