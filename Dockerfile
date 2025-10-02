@@ -5,13 +5,12 @@ ENV FILE_FOR_GROUP=/var/run/docker.sock \
     ANGIE_USER=angie
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 RUN set -eux; \
     apk update; \
     apk upgrade --no-interactive; \
-    apk --no-cache add curl ca-certificates tzdata; \
-    curl -o /etc/apk/keys/angie-signing.rsa https://angie.software/keys/angie-signing.rsa; \
+    apk --no-cache add ca-certificates tzdata; \
+    wget -O /etc/apk/keys/angie-signing.rsa https://angie.software/keys/angie-signing.rsa; \
     echo "https://download.angie.software/angie/alpine/v$(egrep -o \
          '[0-9]+\.[0-9]+' /etc/alpine-release)/main" >> /etc/apk/repositories; \
     apk add --no-cache angie \
@@ -24,10 +23,9 @@ RUN set -eux; \
     rm -rf /var/cache/apk/*; \
     rm -rf /root/.cache; \
     rm -rf /tmp/*; \
-    echo "net.core.rmem_max=2500000 " >> /etc/sysctl.conf; \
-    echo "net.core.wmem_max=2500000 " >> /etc/sysctl.conf; \
     ln -sf /dev/stdout /var/log/angie/access.log; \
-    ln -sf /dev/stderr /var/log/angie/error.log
+    ln -sf /dev/stderr /var/log/angie/error.log; \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /app
 
