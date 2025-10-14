@@ -30,8 +30,8 @@ RUN set -eux; \
 WORKDIR /app
 
 EXPOSE 80/tcp
-EXPOSE 443/tcp
-EXPOSE 443/udp
+# EXPOSE 443/tcp
+# EXPOSE 443/udp
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["angie", "-g", "daemon off;"]
