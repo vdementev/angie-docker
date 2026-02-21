@@ -9,14 +9,13 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN set -eux; \
     apk update; \
     apk upgrade --no-interactive; \
-    apk --no-cache add ca-certificates tzdata; \
+    apk --no-cache add ca-certificates tzdata su-exec; \
     wget -O /etc/apk/keys/angie-signing.rsa https://angie.software/keys/angie-signing.rsa; \
-    echo "https://download.angie.software/angie/alpine/v$(egrep -o \
+    echo "https://download.angie.software/angie/alpine/v$(grep -Eo \
          '[0-9]+\.[0-9]+' /etc/alpine-release)/main" >> /etc/apk/repositories; \
     apk add --no-cache angie \
             angie-module-brotli \
             angie-module-cache-purge \
-            angie-module-modsecurity \
             angie-module-zstd \
             angie-console-light; \
     rm /etc/apk/keys/angie-signing.rsa; \
@@ -25,11 +24,11 @@ RUN set -eux; \
     rm -rf /tmp/*; \
     ln -sf /dev/stdout /var/log/angie/access.log; \
     ln -sf /dev/stderr /var/log/angie/error.log; \
-    chmod +x /usr/local/bin/docker-entrypoint.sh
+    chmod 700 /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /app
 
-EXPOSE 80/tcp
+EXPOSE 80/tcp 443/tcp 443/udp
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["angie", "-g", "daemon off;"]

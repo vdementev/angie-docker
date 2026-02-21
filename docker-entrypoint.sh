@@ -7,7 +7,7 @@ USER_NAME="${ANGIE_USER:-angie}"
 
 # Checkif file exist
 if [ ! -e "$FILE" ]; then
-  exec "$@"
+  exec su-exec "$USER_NAME" "$@"
 fi
 
 # Check GID of the file
@@ -30,4 +30,4 @@ if [ -n "${GID:-}" ] && [ "$GID" -gt 0 ]; then
   fi
 fi
 
-exec "$@"
+exec su-exec "$USER_NAME" "$@"
