@@ -1,8 +1,8 @@
 FROM alpine:3.23
 
-ENV FILE_FOR_GROUP=/var/run/docker.sock \
-    DOCKER_GROUP_NAME=docker \
-    ANGIE_USER=angie
+# ENV FILE_FOR_GROUP=/var/run/docker.sock \
+#     DOCKER_GROUP_NAME=docker \
+#     ANGIE_USER=angie
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
