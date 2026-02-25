@@ -24,6 +24,15 @@ RUN set -eux; \
     rm -rf /tmp/*; \
     ln -sf /dev/stdout /var/log/angie/access.log; \
     ln -sf /dev/stderr /var/log/angie/error.log; \
+    mkdir -p /var/cache/angie/client_temp \
+             /var/cache/angie/proxy_temp \
+             /var/cache/angie/fastcgi_temp \
+             /var/cache/angie/uwsgi_temp \
+             /var/cache/angie/scgi_temp \
+             /var/run/angie; \
+    chown -R angie:angie /var/cache/angie \
+                         /var/log/angie \
+                         /var/run/angie; \
     chmod 700 /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /app
