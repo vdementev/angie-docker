@@ -7,5 +7,3 @@ Also this image contains some modules:
 - angie-module-modsecurity
 - angie-module-zstd
 - angie-console-light
-
-bump
