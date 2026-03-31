@@ -7,19 +7,18 @@ FROM alpine:3.23
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN set -eux; \
-    apk update; \
-    apk upgrade --no-interactive; \
-    apk --no-cache add ca-certificates tzdata su-exec; \
+    apk upgrade --no-cache --no-interactive; \
     wget -O /etc/apk/keys/angie-signing.rsa https://angie.software/keys/angie-signing.rsa; \
     echo "https://download.angie.software/angie/alpine/v$(grep -Eo \
          '[0-9]+\.[0-9]+' /etc/alpine-release)/main" >> /etc/apk/repositories; \
-    apk add --no-cache angie \
+    apk add --no-cache \
+            ca-certificates tzdata su-exec \
+            angie \
             angie-module-brotli \
             angie-module-cache-purge \
             angie-module-zstd \
             angie-console-light; \
     rm /etc/apk/keys/angie-signing.rsa; \
-    rm -rf /var/cache/apk/*; \
     rm -rf /root/.cache; \
     rm -rf /tmp/*; \
     ln -sf /dev/stdout /var/log/angie/access.log; \

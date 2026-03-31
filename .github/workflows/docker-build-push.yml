@@ -50,6 +50,8 @@ jobs:
           images: ${{ env.IMAGE_REPO }}
           tags: |
             type=raw,value=latest
+            type=sha,prefix=
+            type=raw,value={{date 'YYYYMMDD'}}
 
       - name: Build & push
         uses: docker/build-push-action@v6
