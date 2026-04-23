@@ -16,8 +16,7 @@ RUN set -eux; \
             angie \
             angie-module-brotli \
             angie-module-cache-purge \
-            angie-module-zstd \
-            angie-console-light; \
+            angie-module-zstd; \
     rm /etc/apk/keys/angie-signing.rsa; \
     rm -rf /root/.cache; \
     rm -rf /tmp/*; \
