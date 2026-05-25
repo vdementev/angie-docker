@@ -6,6 +6,7 @@ on:
     # paths:
     #   - "Dockerfile"
     #   - "Dockerfile.*"
+    #   - "docker-entrypoint.sh"
     #   - ".github/workflows/**"
   workflow_dispatch:
 
@@ -15,7 +16,7 @@ env:
 
 concurrency:
   group: build-image-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-push:
@@ -50,10 +51,38 @@ jobs:
           images: ${{ env.IMAGE_REPO }}
           tags: |
             type=raw,value=latest
-            type=sha,prefix=
-            type=raw,value={{date 'YYYYMMDD'}}
+          labels: |
+            org.opencontainers.image.title=angie
+            org.opencontainers.image.description=Reusable Angie base — brotli + cache-purge + zstd, with Docker-socket group integration for service discovery.
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build (load for scan)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_REPO }}:scan
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_REPO }}:scan
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
 
       - name: Build & push
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -64,3 +93,28 @@ jobs:
           provenance: mode=max
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.1
+
+      - name: Sign image with Cosign (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          for tag in $TAGS; do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
+      - name: Sync Docker Hub description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE_REPO }}
+          short-description: "Alpine Angie reverse-proxy: brotli + cache-purge + zstd + Docker-socket group integration."
+          readme-filepath: ./DOCKERHUB.md
