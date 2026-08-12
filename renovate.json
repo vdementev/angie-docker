@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:best-practices"],
+  "packageRules": [
+    {
+      "description": "Auto-merge base image digest/patch refreshes once CI is green",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["digest", "pin", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Minor/major base bumps stay as PRs for review",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false
+    },
+    {
+      "description": "Keep the floating @v1 ref to our reusable workflows",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["vdementev/docker-workflows"],
+      "enabled": false
+    }
+  ]
+}
