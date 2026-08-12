@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "10 3 * * 1" # weekly rebuild: fresh base layers + package updates
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    uses: vdementev/docker-workflows/.github/workflows/build-image.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      image: angie
+      push: ${{ github.event_name != 'pull_request' }}
+      tags: |
+        type=raw,value=latest
+      labels: |
+        org.opencontainers.image.title=angie
+        org.opencontainers.image.description=Reusable Angie base — brotli + cache-purge + zstd, with Docker-socket group integration for service discovery.
+        org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+        org.opencontainers.image.revision=${{ github.sha }}
+        org.opencontainers.image.licenses=MIT
+    secrets: inherit
+
+  sync-description:
+    if: github.event_name != 'pull_request'
+    needs: build
+    uses: vdementev/docker-workflows/.github/workflows/sync-description.yml@v1
+    with:
+      image: angie
+      short-description: "Alpine Angie reverse-proxy: brotli + cache-purge + zstd + Docker-socket group integration."
+    secrets: inherit
