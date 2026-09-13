@@ -11,7 +11,7 @@
 # itself ships only Angie's apk defaults — no opinionated vhost.
 # syntax=docker/dockerfile:1.6
 
-FROM mirror.gcr.io/library/alpine:3.23
+FROM mirror.gcr.io/library/alpine:3.24
 
 # OCI metadata. Source/url/title/licenses can be overridden at build time
 # via --label so downstream projects don't have to fork this Dockerfile.
