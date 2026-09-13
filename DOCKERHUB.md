@@ -53,16 +53,24 @@ default (which it usually does).
 - `ca-certificates` + `tzdata` (Angie proxies upstream over HTTPS and
   resolves names; operators expect local-time logs).
 - `su-exec` for optional master-process privilege drop.
+- `socat` for the healthcheck's Docker-socket probe.
 
 ## Default behaviour
 
 - **`:80`**, **`:443/tcp`**, **`:443/udp`** exposed (publish what you need).
 - **Master runs as root** by default — workers drop privilege via the
-  `user angie;` directive in your config. This matches stock nginx and
-  avoids `/dev/stderr` permission failures on rootless / restrictive
-  seccomp hosts. Set `ANGIE_DROP_MASTER=true` to `su-exec` the entire
-  master if your environment supports it.
+  `user angie;` directive in your config, the stock nginx model.
+  `ANGIE_DROP_MASTER=true` runs the whole master as `ANGIE_USER` instead;
+  the entrypoint first hands that user the container's stdout/stderr pipes,
+  `/run` and the ACME store, which Angie reopens by path and Docker leaves
+  root-owned. Drop the `user` directive from your config when you use it —
+  a non-root master ignores it and warns.
 - **`STOPSIGNAL SIGQUIT`** for clean worker drain on `docker stop`.
+- **`HEALTHCHECK`** verifies the master is alive *and*, when the socket is
+  mounted, that it still accepts connections — a dockerd restart leaves the
+  bind-mounted socket file pointing at a dead inode, which stays invisible
+  until the next reload wipes the discovered upstreams and everything 502s.
+  Set `ANGIE_HEALTHCHECK_URL` to add an HTTP probe of your own vhost.
 - Logs symlinked to `/dev/stdout` / `/dev/stderr` so `docker logs`
   works without extra wiring.
 - Cache + run dirs under `/var/cache/angie/*` and `/var/run/angie`,
@@ -76,6 +84,10 @@ default (which it usually does).
 | `DOCKER_GROUP_NAME`  | `docker`                 | Name of the group created / renumbered to match that GID when no existing group already maps to it.     |
 | `ANGIE_USER`         | `angie`                  | User added to the resolved group (the worker user from `angie.conf`).                                   |
 | `ANGIE_DROP_MASTER`  | _(unset)_                | When `true`, runs the master process as `ANGIE_USER` via `su-exec` instead of root.                     |
+| `ANGIE_SOCKET_CHECK`      | `true`       | Healthcheck probes the mounted socket. `false` skips it.                                           |
+| `ANGIE_HEALTHCHECK_URL`   | _(unset)_    | Extra HTTP probe for the healthcheck, e.g. `http://127.0.0.1/ping`.                                |
+| `ANGIE_SOCKET_WATCH`      | _(unset)_    | `true` stops the container when the socket dies, so the restart policy re-binds it (needs `restart: always`/`unless-stopped`). |
+| `ANGIE_WATCH_CONFIG`      | _(unset)_    | `true` watches `/etc/angie` and reloads on change — but only after `angie -t` passes, so a broken config never takes the vhost down. |
 
 ## Security note
 

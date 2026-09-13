@@ -4,7 +4,9 @@
 # Angie + brotli + cache-purge + zstd dynamic modules, plus an entrypoint
 # that aligns the worker user with the mounted /var/run/docker.sock group
 # so Angie's docker_endpoint upstream resolver can talk to the daemon for
-# service discovery.
+# service discovery. The healthcheck then keeps watching that socket, and
+# two opt-in watchdogs handle a socket that dies mid-flight
+# (ANGIE_SOCKET_WATCH) and config reloads (ANGIE_WATCH_CONFIG).
 #
 # Consumers (a compose stack, an orchestrator): mount your own
 # /etc/angie/angie.conf (and conf.d/*.conf) plus TLS certs. The image
@@ -27,6 +29,7 @@ ENV FILE_FOR_GROUP=/var/run/docker.sock \
     ANGIE_USER=angie
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY angie-healthcheck.sh /usr/local/bin/angie-healthcheck
 
 RUN set -eux; \
     apk update; \
@@ -35,7 +38,7 @@ RUN set -eux; \
     echo "https://download.angie.software/angie/alpine/v$(grep -Eo \
          '[0-9]+\.[0-9]+' /etc/alpine-release)/main" >> /etc/apk/repositories; \
     apk add --no-cache \
-            ca-certificates tzdata su-exec \
+            ca-certificates tzdata su-exec socat \
             angie \
             angie-module-brotli \
             angie-module-cache-purge \
@@ -56,7 +59,8 @@ RUN set -eux; \
     chown -R angie:angie /var/cache/angie \
                          /var/log/angie \
                          /var/run/angie; \
-    chmod 700 /usr/local/bin/docker-entrypoint.sh
+    chmod 700 /usr/local/bin/docker-entrypoint.sh \
+              /usr/local/bin/angie-healthcheck
 
 WORKDIR /app
 
@@ -65,6 +69,12 @@ WORKDIR /app
 EXPOSE 80/tcp 443/tcp 443/udp
 
 STOPSIGNAL SIGQUIT
+
+# Master alive + (when mounted) the Docker socket still answers, so a dead
+# socket shows up before the next reload turns it into a sitewide 502.
+# Set ANGIE_HEALTHCHECK_URL to add an HTTP probe of your own vhost.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD ["/usr/local/bin/angie-healthcheck"]
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["angie", "-g", "daemon off;"]
