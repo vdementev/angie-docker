@@ -54,6 +54,85 @@ if [ -e "$SOCKET" ]; then
   fi
 fi
 
+# ── Background watchdogs ────────────────────────────────────────
+# Both are opt-in and both are skipped unless we are actually starting the
+# server — `angie -t`, `angie -v`, `angie -s reload` must stay one-shot.
+is_server_start() {
+  case " $* " in
+    *" -t "*|*" -T "*|*" -v "*|*" -V "*|*" -s "*) return 1 ;;
+  esac
+  return 0
+}
+
+# Stop the container when the Docker socket stops answering, so the restart
+# policy re-binds a fresh socket inode. A dead socket is silent otherwise:
+# discovery keeps failing every poll while the already-populated upstreams
+# serve traffic, and the outage only lands at the next reload.
+socket_watchdog() {
+  interval="${ANGIE_SOCKET_WATCH_INTERVAL:-15}"
+  threshold="${ANGIE_SOCKET_WATCH_RETRIES:-3}"
+  failures=0
+
+  while sleep "$interval"; do
+    [ -e "$SOCKET" ] || continue
+
+    if socat -u -T2 /dev/null "UNIX-CONNECT:$SOCKET" 2>/dev/null; then
+      failures=0
+      continue
+    fi
+
+    failures=$((failures + 1))
+    warn "docker socket unreachable ($failures/$threshold): $SOCKET"
+    [ "$failures" -ge "$threshold" ] || continue
+
+    warn "service discovery is dead — stopping so the restart policy re-binds the socket"
+    kill -QUIT "$(cat /run/angie.pid 2>/dev/null || echo 1)" 2>/dev/null || kill -QUIT 1
+    return
+  done
+}
+
+# Fingerprint of every config file, content-based: mtimes survive an rsync -a
+# deploy, contents don't.
+config_fingerprint() {
+  find "$1" -type f -exec md5sum {} + 2>/dev/null | sort | md5sum
+}
+
+# Reload on config change, but only after the config parses. A failed parse is
+# left running on the old config instead of taking the vhost down — a literal
+# hostname in a proxy_pass whose DNS is broken exits the master at parse time
+# and turns `restart: unless-stopped` into a crash loop.
+config_watchdog() {
+  path="${ANGIE_WATCH_CONFIG_PATH:-/etc/angie}"
+  interval="${ANGIE_WATCH_CONFIG_INTERVAL:-10}"
+  last="$(config_fingerprint "$path")"
+
+  while sleep "$interval"; do
+    current="$(config_fingerprint "$path")"
+    [ "$current" != "$last" ] || continue
+    last="$current"
+
+    if output="$(angie -t 2>&1)"; then
+      if angie -s reload 2>/dev/null; then
+        warn "config changed — reloaded"
+      else
+        warn "config changed and parses, but reload failed"
+      fi
+    else
+      warn "config changed but failed to parse — NOT reloading:"
+      printf '%s\n' "$output" >&2
+    fi
+  done
+}
+
+if is_server_start "$@"; then
+  if [ "${ANGIE_SOCKET_WATCH:-}" = "true" ]; then
+    socket_watchdog &
+  fi
+  if [ "${ANGIE_WATCH_CONFIG:-}" = "true" ]; then
+    config_watchdog &
+  fi
+fi
+
 # ── Master process privilege ────────────────────────────────────
 # By default the master runs as root and the "user" directive in
 # angie.conf handles worker privilege separation — matching the
