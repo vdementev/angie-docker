@@ -138,14 +138,37 @@ fi
 # angie.conf handles worker privilege separation — matching the
 # stock nginx Docker image.
 #
-# On some Docker configurations (rootless, restrictive seccomp /
-# apparmor), non-root users cannot open /dev/stderr via
-# /proc/self/fd/2, which prevents Angie from writing to its log
-# symlinks. Running the master as root avoids that entirely.
-#
-# Set ANGIE_DROP_MASTER=true on environments where su-exec is known
-# to work (standard rootful Docker).
+# Set ANGIE_DROP_MASTER=true to run the master as ANGIE_USER instead.
+# Ports 80/443 still bind — Docker sets net.ipv4.ip_unprivileged_port_start=0
+# inside the container — but every path Angie writes to has to belong to that
+# user, and the "user" directive in angie.conf becomes a no-op (it logs a
+# warning and is ignored, since a non-root master can't switch users).
 if [ "${ANGIE_DROP_MASTER:-}" = "true" ] && [ "$USER_NAME" != "root" ]; then
+  # Docker hands the container its stdout/stderr as root-owned 0600 pipes and
+  # Angie *reopens* them by path (/var/log/angie/*.log are symlinks to
+  # /dev/std*), so a non-root master dies at startup with "Permission denied"
+  # before it logs anything useful. Same story for the pid and lock files it
+  # creates directly in /run. Hand both to the user we're about to become —
+  # while we still have the privilege to do it.
+  # No `2>/dev/null` here, on purpose: the redirect would replace chown's own
+  # fd 2, so /proc/self/fd/2 would resolve to /dev/null and the chown would
+  # "succeed" against the wrong file. /proc/$$/fd/2 doesn't work either — the
+  # magic symlinks only resolve to the open file for the process itself.
+  for fd in 1 2; do
+    chown "$USER_NAME" "/proc/self/fd/$fd" \
+      || warn "could not chown fd $fd to '$USER_NAME'; Angie may fail to open its logs"
+  done
+  chown "$USER_NAME" /run 2>/dev/null \
+    || warn "could not chown /run to '$USER_NAME'; Angie may fail to write its pid file"
+
+  # The ACME store ships as root-owned 0700 and a fresh volume inherits that,
+  # so the built-in ACME client can't write its account key or the issued
+  # certificates.
+  if [ -d /var/lib/angie/acme ]; then
+    chown -R "$USER_NAME" /var/lib/angie/acme 2>/dev/null \
+      || warn "could not chown /var/lib/angie/acme to '$USER_NAME'; ACME issuance will fail"
+  fi
+
   exec su-exec "$USER_NAME" "$@"
 fi
 

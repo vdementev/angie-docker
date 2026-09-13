@@ -59,10 +59,12 @@ default (which it usually does).
 
 - **`:80`**, **`:443/tcp`**, **`:443/udp`** exposed (publish what you need).
 - **Master runs as root** by default — workers drop privilege via the
-  `user angie;` directive in your config. This matches stock nginx and
-  avoids `/dev/stderr` permission failures on rootless / restrictive
-  seccomp hosts. Set `ANGIE_DROP_MASTER=true` to `su-exec` the entire
-  master if your environment supports it.
+  `user angie;` directive in your config, the stock nginx model.
+  `ANGIE_DROP_MASTER=true` runs the whole master as `ANGIE_USER` instead;
+  the entrypoint first hands that user the container's stdout/stderr pipes,
+  `/run` and the ACME store, which Angie reopens by path and Docker leaves
+  root-owned. Drop the `user` directive from your config when you use it —
+  a non-root master ignores it and warns.
 - **`STOPSIGNAL SIGQUIT`** for clean worker drain on `docker stop`.
 - **`HEALTHCHECK`** verifies the master is alive *and*, when the socket is
   mounted, that it still accepts connections — a dockerd restart leaves the

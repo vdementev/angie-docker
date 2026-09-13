@@ -44,10 +44,17 @@ If the socket isn't mounted, the entrypoint is a no-op — the image
 works fine for plain reverse-proxy duty without service discovery.
 
 By default the master process runs as root and the `user` directive in
-`angie.conf` handles worker privilege separation (matches stock nginx,
-avoids `/dev/stderr` permission failures on rootless / restrictive
-seccomp hosts). Set `ANGIE_DROP_MASTER=true` to `su-exec` the entire
-master to `$ANGIE_USER`.
+`angie.conf` handles worker privilege separation — the stock nginx model.
+
+`ANGIE_DROP_MASTER=true` `su-exec`s the entire master to `$ANGIE_USER`
+instead. Before it does, the entrypoint hands that user the things Angie
+reopens by path and would otherwise be denied: the container's stdout/stderr
+pipes (Docker creates them root-owned `0600`, and `/var/log/angie/*.log` are
+symlinks to `/dev/std*`), `/run` for the pid and lock files, and the ACME
+store at `/var/lib/angie/acme`. Ports 80/443 still bind — Docker sets
+`net.ipv4.ip_unprivileged_port_start=0` inside the container. The `user`
+directive in your config becomes a no-op and logs a warning: a non-root
+master cannot switch users, so drop it from `angie.conf` when you use this.
 
 ## Environment
 
