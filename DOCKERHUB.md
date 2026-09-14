@@ -12,19 +12,17 @@ discovery.
 
 ## Tags
 
-| Tag      | Description                       |
-|----------|-----------------------------------|
-| `latest` | Latest build from `main`.         |
+| Tag | Contents |
+|---|---|
+| `latest` | The newest build — every merge to `main`, plus a weekly rebuild for package updates. |
+| `1.12.1` | The exact Angie version inside the image. |
+| `1.12` | The newest patch of that Angie minor. |
 
-Multi-arch: `linux/amd64`, `linux/arm64`. SBOM and max-mode build
-provenance attached to every image. Images are signed with Cosign
-(keyless, OIDC-bound to this repo) — verify with:
+Version tags are read out of the image *after* it is built and tested, so a tag
+can never claim a version the image does not run.
 
-```
-cosign verify dementev/angie:latest \
-  --certificate-identity-regexp '^https://github\.com/vdementev/angie/' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
-```
+Multi-arch: `linux/amd64`, `linux/arm64`. SBOM, max-mode build provenance and a
+keyless Cosign signature on every published digest.
 
 ## Quick start
 
@@ -131,13 +129,61 @@ includes — mount your own `angie.conf` and you own the directive instead.
 | `ANGIE_SOCKET_WATCH`      | _(unset)_    | `true` stops the container when the socket dies, so the restart policy re-binds it (needs `restart: always`/`unless-stopped`). |
 | `ANGIE_WATCH_CONFIG`      | _(unset)_    | `true` watches `/etc/angie` and reloads on change — but only after `angie -t` passes, so a broken config never takes the vhost down. |
 
-## Security note
+## The docker.sock group
 
 The entrypoint refuses to add the worker user to GID 0 — a root-owned
 `docker.sock` is a misconfiguration and joining root group would defeat
 privilege separation. Use docker rootless, or ensure your socket has a
 non-root group, if you hit that warning.
 
-## Source
+## Security and provenance
 
-[github.com/vdementev/angie](https://github.com/vdementev/angie) · MIT license
+Every published digest is built by the shared pipeline in
+[vdementev/docker-workflows](https://github.com/vdementev/docker-workflows).
+Pull requests build, test and scan without publishing; `main` is
+branch-protected, so nothing reaches Docker Hub without a green check behind it.
+A Trivy gate fails the build on any *fixable* CRITICAL or HIGH finding, and each
+published digest carries an SBOM, max-mode SLSA provenance and a keyless Cosign
+signature.
+
+Verify what you pulled:
+
+```sh
+cosign verify \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp 'github.com/vdementev/' \
+  dementev/angie:latest
+```
+
+[SECURITY.md](https://github.com/vdementev/angie-docker/blob/main/SECURITY.md) is the reporting channel and the response
+targets; [SUPPORT.md](https://github.com/vdementev/angie-docker/blob/main/SUPPORT.md) covers tag lifecycle, pinning and
+patch cadence.
+
+## Related images
+
+One family, built by the same pipeline, meant to run together — a proxy in
+front, an app runtime, a database, and a way into it.
+
+| Image | What it does |
+|---|---|
+| **[`dementev/angie`](https://hub.docker.com/r/dementev/angie)** — this image | Public-facing reverse proxy and TLS terminator — Angie, the nginx fork, with brotli, zstd and cache-purge |
+| [`dementev/nginx`](https://hub.docker.com/r/dementev/nginx) — [source](https://github.com/vdementev/nginx-docker) | Static sites and SPAs behind that proxy — brotli/zstd siblings, Prometheus stub_status |
+| [`dementev/php-fpm-with-ext`](https://hub.docker.com/r/dementev/php-fpm-with-ext) — [source](https://github.com/vdementev/docker-php-fpm-with-ext) | PHP-FPM and CLI, PHP 7.0 → 8.5, with the extensions most projects reach for |
+| [`dementev/mysql-percona`](https://hub.docker.com/r/dementev/mysql-percona) — [source](https://github.com/vdementev/mysql-percona-docker) | Percona Server for MySQL 8.4 LTS, XtraBackup built in, no root inside |
+| [`dementev/adminer`](https://hub.docker.com/r/dementev/adminer) — [source](https://github.com/vdementev/adminer-docker) | Adminer 6 with every driver it supports, for reaching any of the above |
+
+## Maintainer
+
+Built and maintained by [Vasilii Dementev](https://vasiliidementev.com) at
+[Lotus Web Agency](https://lotuswebagency.com). These images are not a side
+project — they are the base layer under the client and product systems we run,
+which is why they are gated, tested and signed rather than pushed by hand.
+
+Issues and pull requests:
+[github.com/vdementev/angie-docker](https://github.com/vdementev/angie-docker).
+Need this kind of infrastructure built or maintained for your own stack?
+[lotuswebagency.com](https://lotuswebagency.com).
+
+Packaging in this repository is MIT licensed — see
+[LICENSE](https://github.com/vdementev/angie-docker/blob/main/LICENSE). The software
+inside the image keeps its own upstream licenses.

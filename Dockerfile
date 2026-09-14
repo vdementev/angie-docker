@@ -18,10 +18,14 @@ FROM mirror.gcr.io/library/debian:13-slim
 
 # OCI metadata. Source/url/title/licenses can be overridden at build time
 # via --label so downstream projects don't have to fork this Dockerfile.
-LABEL org.opencontainers.image.title="angie"
-LABEL org.opencontainers.image.description="Reusable Angie base — brotli + cache-purge + zstd, with Docker-socket group integration for service discovery."
-LABEL org.opencontainers.image.source="https://github.com/vdementev/angie"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.title="angie" \
+      org.opencontainers.image.description="Reusable Angie base — brotli + cache-purge + zstd, with Docker-socket group integration for service discovery." \
+      org.opencontainers.image.url="https://hub.docker.com/r/dementev/angie" \
+      org.opencontainers.image.documentation="https://github.com/vdementev/angie-docker#readme" \
+      org.opencontainers.image.source="https://github.com/vdementev/angie-docker" \
+      org.opencontainers.image.vendor="Lotus Web Agency" \
+      org.opencontainers.image.authors="Vasilii Dementev https://vasiliidementev.com" \
+      org.opencontainers.image.licenses="MIT"
 
 # Trust anchor for the Angie apt repository. Pinned by content hash rather
 # than trusted on first use: a swapped key at angie.software fails the build

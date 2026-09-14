@@ -23,11 +23,23 @@ jobs:
       push: ${{ github.event_name != 'pull_request' }}
       tags: |
         type=raw,value=latest
+      # Smoke-tests the locally built amd64 image before it can be published:
+      # module loading + brotli/zstd/cache-purge, a real reverse-proxy round
+      # trip, healthcheck, worker_processes, docker.sock group alignment,
+      # rootless master. $IMAGE is set by the reusable workflow.
+      test-command: ./tests.sh
+      # The apt package is deliberately unpinned, so the version tags are read
+      # back out of the image that just passed the tests: 1.12.1 and 1.12.
+      version-command: docker run --rm "$IMAGE" angie -v 2>&1 | sed -n 's|.*[Aa]ngie/\([0-9][0-9.]*\).*|\1|p'
       labels: |
         org.opencontainers.image.title=angie
         org.opencontainers.image.description=Reusable Angie base — brotli + cache-purge + zstd, with Docker-socket group integration for service discovery.
+        org.opencontainers.image.url=https://hub.docker.com/r/dementev/angie
+        org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}#readme
         org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
         org.opencontainers.image.revision=${{ github.sha }}
+        org.opencontainers.image.vendor=Lotus Web Agency
+        org.opencontainers.image.authors=Vasilii Dementev https://vasiliidementev.com
         org.opencontainers.image.licenses=MIT
     secrets: inherit
 
