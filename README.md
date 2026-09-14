@@ -6,6 +6,9 @@ reverse proxy / TLS terminator. TLS, HTTP/2, HTTP/3 (QUIC) and
 public-internet exposure all happen here; downstream services sit on a
 private docker network behind it.
 
+Published as [`dementev/angie`](https://hub.docker.com/r/dementev/angie)
+for `linux/amd64` and `linux/arm64`.
+
 `FROM` it in your project's Dockerfile (or use it directly in compose),
 drop your vhosts into `/etc/angie/http.d/` and mount your certs.
 
@@ -18,8 +21,8 @@ drop your vhosts into `/etc/angie/http.d/` and mount your certs.
 | `1.12` | The newest patch of that Angie minor. |
 
 Version tags are read out of the image *after* it is built and tested, so a tag
-can never claim a version the image does not run. `linux/amd64` and
-`linux/arm64`. Lifecycle and pinning: [SUPPORT.md](SUPPORT.md).
+can never claim a version the image does not run. Lifecycle and pinning:
+[SUPPORT.md](SUPPORT.md).
 
 ## What's in the image
 
