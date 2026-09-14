@@ -1,13 +1,14 @@
 # angie — reverse proxy with Docker-socket service discovery
 
-Tiny Alpine-based [Angie](https://angie.software/) image purpose-built
-as the **public-facing reverse proxy / TLS terminator** in front of
-other containers on a docker host. Brotli + cache-purge + zstd dynamic
-modules are bundled, and an entrypoint aligns the worker user with the
-mounted `/var/run/docker.sock` group so Angie's `docker_endpoint`
-upstream resolver can talk to the daemon for service discovery.
+Debian-slim [Angie](https://angie.software/) image purpose-built as the
+**public-facing reverse proxy / TLS terminator** in front of other
+containers on a docker host. Brotli + cache-purge + zstd dynamic modules
+are bundled, `angie.conf` ships latency-tuned, and an entrypoint aligns
+the worker user with the mounted `/var/run/docker.sock` group so Angie's
+`docker_endpoint` upstream resolver can talk to the daemon for service
+discovery.
 
-`FROM` it, mount your `angie.conf` (+ certs), done.
+`FROM` it, drop a vhost into `/etc/angie/http.d/`, mount your certs, done.
 
 ## Tags
 
@@ -20,7 +21,7 @@ provenance attached to every image. Images are signed with Cosign
 (keyless, OIDC-bound to this repo) — verify with:
 
 ```
-cosign verify vdementev/angie:latest \
+cosign verify dementev/angie:latest \
   --certificate-identity-regexp '^https://github\.com/vdementev/angie/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -30,12 +31,11 @@ cosign verify vdementev/angie:latest \
 ```yaml
 services:
   angie:
-    image: vdementev/angie:latest
+    image: dementev/angie:latest
     ports: ["80:80", "443:443", "443:443/udp"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./angie.conf:/etc/angie/angie.conf:ro
-      - ./conf.d:/etc/angie/conf.d:ro
+      - ./http.d:/etc/angie/http.d:ro
       - ./certs:/etc/angie/certs:ro
 ```
 
@@ -44,16 +44,57 @@ The entrypoint reads the GID of `/var/run/docker.sock` and joins the
 working when the host's `docker` group GID differs from the image's
 default (which it usually does).
 
+`load_module` is main-level, so the bundled dynamic modules go into
+`/etc/angie/main.d/*.conf` (mount your own `angie.conf` instead if you want
+to own the whole file):
+
+```nginx
+load_module modules/ngx_http_brotli_filter_module.so;
+load_module modules/ngx_http_zstd_filter_module.so;
+load_module modules/ngx_http_cache_purge_module.so;
+```
+
 ## What's inside
 
-- **Alpine edge** + **Angie** (from the official `download.angie.software` apk repo).
+- **Debian 13 (trixie) slim** + **Angie** (from the official `download.angie.software` apt repo).
 - **brotli** dynamic module (`angie-module-brotli`).
 - **cache-purge** dynamic module (`angie-module-cache-purge`).
 - **zstd** dynamic module (`angie-module-zstd`).
 - `ca-certificates` + `tzdata` (Angie proxies upstream over HTTPS and
   resolves names; operators expect local-time logs).
-- `su-exec` for optional master-process privilege drop.
-- `socat` for the healthcheck's Docker-socket probe.
+- `curl` for the healthcheck's Docker-socket and HTTP probes.
+- `setpriv` (base `util-linux`) for the optional master privilege drop.
+
+glibc rather than musl is the point of the Debian base: musl's allocator
+serializes across worker threads and its resolver is single-shot, both of
+which show up as p99 latency on a proxy fanning out to named upstreams.
+
+## Latency tuning
+
+The shipped `angie.conf` carries main- and http-level tuning — `pcre_jit`,
+`accept_mutex off`, `aio threads`, buffered access log, `open_file_cache`,
+upstream keepalive (`proxy_http_version 1.1` + empty `Connection`),
+`proxy_connect_timeout 5s`, gzip at level 5, TLS 1.2/1.3 with AES-GCM
+first, a shared session cache and `ssl_buffer_size 4k`. No vhost of our
+own, so your `http.d/*.conf` still decides everything user-visible.
+
+`worker_processes` comes from **`ANGIE_WORKER_PROCESSES`**: `auto`
+(default, Angie's own — one worker per host CPU), `cgroup` (derived from
+this container's CPU limit, so `cpus: 2` gets 2 workers instead of one per
+host core), or a literal count. The entrypoint writes it to
+`/etc/angie/main.d/worker_processes.conf`, which the shipped `angie.conf`
+includes — mount your own `angie.conf` and you own the directive instead.
+
+## Hardening
+
+- Angie's apt trust anchor is pinned by SHA-256 and referenced through a
+  deb822 `Signed-By:` keyring — a swapped upstream key fails the build.
+- Every setuid/setgid bit Debian ships is stripped.
+- `--no-install-recommends`, `apt-get upgrade` at build, purged apt lists,
+  no `-debug` binaries or modules, no sysv/systemd/logrotate wiring.
+- `server_tokens off`, TLS ≤1.1 refused, slowloris client timeouts.
+- `ANGIE_DROP_MASTER=true` drops all inheritable capabilities and sets
+  `no_new_privs`.
 
 ## Default behaviour
 
@@ -83,7 +124,8 @@ default (which it usually does).
 | `FILE_FOR_GROUP`     | `/var/run/docker.sock`   | File whose GID is mirrored into the worker user's groups.                                               |
 | `DOCKER_GROUP_NAME`  | `docker`                 | Name of the group created / renumbered to match that GID when no existing group already maps to it.     |
 | `ANGIE_USER`         | `angie`                  | User added to the resolved group (the worker user from `angie.conf`).                                   |
-| `ANGIE_DROP_MASTER`  | _(unset)_                | When `true`, runs the master process as `ANGIE_USER` via `su-exec` instead of root.                     |
+| `ANGIE_DROP_MASTER`  | _(unset)_                | When `true`, runs the master process as `ANGIE_USER` via `setpriv` instead of root.                     |
+| `ANGIE_WORKER_PROCESSES` | `auto`               | `auto`, `cgroup` (derive from the container's CPU limit), or a literal worker count.                |
 | `ANGIE_SOCKET_CHECK`      | `true`       | Healthcheck probes the mounted socket. `false` skips it.                                           |
 | `ANGIE_HEALTHCHECK_URL`   | _(unset)_    | Extra HTTP probe for the healthcheck, e.g. `http://127.0.0.1/ping`.                                |
 | `ANGIE_SOCKET_WATCH`      | _(unset)_    | `true` stops the container when the socket dies, so the restart policy re-binds it (needs `restart: always`/`unless-stopped`). |

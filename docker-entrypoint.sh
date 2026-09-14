@@ -11,6 +11,82 @@ USER_NAME="${ANGIE_USER:-angie}"
 
 warn() { printf '[entrypoint] %s\n' "$*" >&2; }
 
+# Does the socket still accept a connection? curl exits 7 on a refused
+# connect and 28 on a timeout; every other code means we got in and only
+# the HTTP conversation went sideways, which is proof enough of life for a
+# socket that may not be Docker's.
+socket_alive() {
+  rc=0
+  curl -s -o /dev/null --max-time "${ANGIE_SOCKET_TIMEOUT:-2}" \
+       --unix-socket "$SOCKET" http://localhost/_ping 2>/dev/null || rc=$?
+  case "$rc" in
+    7|28) return 1 ;;
+    *)    return 0 ;;
+  esac
+}
+
+# ── worker_processes ────────────────────────────────────────────
+# Angie's own `auto` counts host CPUs and ignores the container's CPU
+# quota, so a `cpus: 2` container starts a worker per host core and they
+# fight over two cores' worth of runtime. ANGIE_WORKER_PROCESSES:
+#
+#   auto    (default) — leave it to Angie: one worker per host CPU
+#   cgroup            — derive it from this container's own CPU limit
+#   <n>               — literally that many
+#
+# The value lands in a main-level include that the shipped angie.conf
+# picks up. Mount your own angie.conf and this does nothing — you own the
+# directive at that point.
+WORKER_CONF=/etc/angie/main.d/worker_processes.conf
+
+# CPUs this container may actually use: its cgroup CPU quota, capped by the
+# affinity mask (`--cpuset-cpus`, which nproc honours and `auto` doesn't).
+cgroup_cpus() {
+  quota='' period=''
+  if [ -r /sys/fs/cgroup/cpu.max ]; then                  # cgroup v2
+    read -r quota period < /sys/fs/cgroup/cpu.max || true
+  elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then   # cgroup v1
+    quota="$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || echo)"
+    period="$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null || echo)"
+  fi
+
+  online="$(nproc 2>/dev/null || echo 1)"
+
+  # "max", "-1" and anything non-numeric all mean unlimited.
+  case "$quota"  in ''|*[!0-9]*) printf '%s' "$online"; return ;; esac
+  case "$period" in ''|0|*[!0-9]*) printf '%s' "$online"; return ;; esac
+
+  cpus=$(( (quota + period / 2) / period ))   # round to nearest
+  [ "$cpus" -ge 1 ] || cpus=1
+  [ "$cpus" -le "$online" ] || cpus="$online"
+  printf '%s' "$cpus"
+}
+
+worker_processes_value() {
+  requested="${ANGIE_WORKER_PROCESSES:-auto}"
+  case "$requested" in
+    auto)        printf 'auto' ;;
+    cgroup)      cgroup_cpus ;;
+    0|''|*[!0-9]*)
+      warn "ANGIE_WORKER_PROCESSES='$requested' is not a positive number, 'auto' or 'cgroup'; using auto"
+      printf 'auto' ;;
+    *)           printf '%s' "$requested" ;;
+  esac
+}
+
+# Rewritten on every start, but only when it actually changes — an
+# unconditional write would look like a config change to the watchdog.
+desired="worker_processes  $(worker_processes_value);"
+if [ "$(cat "$WORKER_CONF" 2>/dev/null || echo)" != "$desired" ]; then
+  if ( printf '%s\n' "$desired" > "$WORKER_CONF" ) 2>/dev/null; then
+    warn "$desired"
+  else
+    warn "could not write $WORKER_CONF (read-only /etc/angie?);" \
+         "ANGIE_WORKER_PROCESSES is being ignored — in effect:" \
+         "$(cat "$WORKER_CONF" 2>/dev/null || echo 'nothing, Angie will use its own default')"
+  fi
+fi
+
 # ── Docker socket → group alignment ─────────────────────────────
 # Only runs when the socket is actually mounted. Skipped silently
 # otherwise so the image works fine for plain reverse-proxy duty
@@ -31,23 +107,23 @@ if [ -e "$SOCKET" ]; then
         EXISTING_GROUP="$(getent group | awk -F: -v gid="$SOCK_GID" '$3==gid{print $1; exit}')"
         if [ -n "$EXISTING_GROUP" ]; then
           # GID already mapped to a known group — just join it.
-          addgroup "$USER_NAME" "$EXISTING_GROUP" 2>/dev/null || true
+          usermod -aG "$EXISTING_GROUP" "$USER_NAME" 2>/dev/null || true
         else
           # GID is unknown. Reuse TARGET_GROUP's name (renumber if needed)
           # or create it fresh at SOCK_GID, then add USER_NAME to it.
           if getent group "$TARGET_GROUP" >/dev/null 2>&1; then
             CURRENT_GID="$(getent group "$TARGET_GROUP" | awk -F: '{print $3}')"
             if [ "$CURRENT_GID" != "$SOCK_GID" ]; then
-              if ! sed -i -E "s/^(${TARGET_GROUP}:[^:]*:)[0-9]+:/\1${SOCK_GID}:/" /etc/group; then
+              if ! groupmod -g "$SOCK_GID" "$TARGET_GROUP" 2>/dev/null; then
                 warn "failed to renumber group '$TARGET_GROUP' to GID $SOCK_GID"
               fi
             fi
           else
-            if ! addgroup -g "$SOCK_GID" "$TARGET_GROUP" 2>/dev/null; then
+            if ! groupadd -g "$SOCK_GID" "$TARGET_GROUP" 2>/dev/null; then
               warn "failed to create group '$TARGET_GROUP' with GID $SOCK_GID"
             fi
           fi
-          addgroup "$USER_NAME" "$TARGET_GROUP" 2>/dev/null || true
+          usermod -aG "$TARGET_GROUP" "$USER_NAME" 2>/dev/null || true
         fi
         ;;
     esac
@@ -76,7 +152,7 @@ socket_watchdog() {
   while sleep "$interval"; do
     [ -e "$SOCKET" ] || continue
 
-    if socat -u -T2 /dev/null "UNIX-CONNECT:$SOCKET" 2>/dev/null; then
+    if socket_alive; then
       failures=0
       continue
     fi
@@ -169,7 +245,12 @@ if [ "${ANGIE_DROP_MASTER:-}" = "true" ] && [ "$USER_NAME" != "root" ]; then
       || warn "could not chown /var/lib/angie/acme to '$USER_NAME'; ACME issuance will fail"
   fi
 
-  exec su-exec "$USER_NAME" "$@"
+  # setpriv ships in util-linux, already in the base image — no su-exec/gosu
+  # to vendor. --init-groups picks up the docker group we just joined;
+  # --inh-caps and --no-new-privs make sure nothing downstream of the master
+  # can gain a capability back.
+  exec setpriv --reuid "$USER_NAME" --regid "$USER_NAME" --init-groups \
+               --inh-caps=-all --no-new-privs -- "$@"
 fi
 
 exec "$@"
