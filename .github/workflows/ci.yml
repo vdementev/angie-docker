@@ -37,5 +37,5 @@ jobs:
     uses: vdementev/docker-workflows/.github/workflows/sync-description.yml@v1
     with:
       image: angie
-      short-description: "Alpine Angie reverse-proxy: brotli + cache-purge + zstd + Docker-socket group integration."
+      short-description: "Debian-slim Angie reverse-proxy: brotli + cache-purge + zstd, latency-tuned, Docker-socket group integration."
     secrets: inherit
