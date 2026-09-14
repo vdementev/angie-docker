@@ -9,6 +9,18 @@ private docker network behind it.
 `FROM` it in your project's Dockerfile (or use it directly in compose),
 drop your vhosts into `/etc/angie/http.d/` and mount your certs.
 
+## Tags
+
+| Tag | Contents |
+|---|---|
+| `latest` | The newest build. |
+| `1.12.1` | The exact Angie version inside the image. |
+| `1.12` | The newest patch of that Angie minor. |
+
+Version tags are read out of the image *after* it is built and tested, so a tag
+can never claim a version the image does not run. `linux/amd64` and
+`linux/arm64`. Lifecycle and pinning: [SUPPORT.md](SUPPORT.md).
+
 ## What's in the image
 
 - **Debian 13 (trixie) slim** + **Angie** (from the official
@@ -285,11 +297,12 @@ you then own `worker_processes` and the `load_module` lines too.
 workflow in [`vdementev/docker-workflows`](https://github.com/vdementev/docker-workflows)
 (pinned `@v1`):
 
-1. Pull requests build `linux/amd64` and run the **Trivy** gate (fails on
-   fixable CRITICAL/HIGH; `.trivyignore` at the repo root for accepted risks)
-   without publishing.
+1. Pull requests build `linux/amd64`, run `tests.sh` against the built image
+   and then the **Trivy** gate (fails on fixable CRITICAL/HIGH; `.trivyignore`
+   at the repo root for accepted risks) — all without publishing.
 2. Merging to `main` publishes the multi-arch manifest (`linux/amd64`,
-   `linux/arm64`) to Docker Hub as `dementev/angie:latest` with **SBOM** and
+   `linux/arm64`) to Docker Hub as `dementev/angie:latest` plus the version
+   tags read back out of the built image, with **SBOM** and
    max-mode **provenance**, signs the digest with **Cosign** (keyless,
    OIDC-bound to this repo), and syncs `DOCKERHUB.md` to the Docker Hub
    description.
@@ -300,10 +313,80 @@ and Renovate auto-merges base-image digest/patch bumps once CI is green.
 
 ## Versioning
 
-Tracks whatever Angie the trixie repo currently serves — unpinned, so the
-weekly rebuild picks up new releases. Pin a specific version in a downstream
-Dockerfile with `apt-get install angie=<version>` if you need to.
+The apt package is deliberately unpinned: the weekly rebuild picks up new Angie
+releases, and nothing publishes without passing `tests.sh` and the Trivy gate
+first. What you get instead of a pin is a version tag derived from the built
+image, so you can move deliberately:
+
+```dockerfile
+FROM dementev/angie:1.12@sha256:...
+```
+
+To pin a specific Angie build rather than a specific image, do it downstream
+with `apt-get install angie=<version>`, where you control the rebuild cadence.
 
 The apt repo URL follows the base image: `VERSION_ID` and `VERSION_CODENAME`
 from `/etc/os-release` build it at image-build time, so a base bump to the
 next Debian release needs no Dockerfile edit beyond the `FROM`.
+
+## Tests
+
+`./tests.sh` builds the image and asserts what it promises: the config parses
+and is the tuned one, the brotli/cache-purge/zstd modules load and actually
+work through a fixture vhost, a real proxy round trip to an upstream container,
+`ANGIE_WORKER_PROCESSES`, the docker-socket GID alignment with and without a
+socket mounted, `ANGIE_DROP_MASTER`, no debug artifacts and no setuid binaries
+left in the image, and access logs reaching stdout. CI runs the same script
+against the built image before anything is published (`IMAGE=… ./tests.sh` to
+test an image you already have).
+
+## Security and provenance
+
+Every published digest is built by the shared pipeline in
+[vdementev/docker-workflows](https://github.com/vdementev/docker-workflows).
+Pull requests build, test and scan without publishing; `main` is
+branch-protected, so nothing reaches Docker Hub without a green check behind it.
+A Trivy gate fails the build on any *fixable* CRITICAL or HIGH finding, and each
+published digest carries an SBOM, max-mode SLSA provenance and a keyless Cosign
+signature.
+
+Verify what you pulled:
+
+```sh
+cosign verify \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp 'github.com/vdementev/' \
+  dementev/angie:latest
+```
+
+[SECURITY.md](SECURITY.md) is the reporting channel and the response
+targets; [SUPPORT.md](SUPPORT.md) covers tag lifecycle, pinning and
+patch cadence.
+
+## Related images
+
+One family, built by the same pipeline, meant to run together — a proxy in
+front, an app runtime, a database, and a way into it.
+
+| Image | What it does |
+|---|---|
+| **[`dementev/angie`](https://hub.docker.com/r/dementev/angie)** — this image | Public-facing reverse proxy and TLS terminator — Angie, the nginx fork, with brotli, zstd and cache-purge |
+| [`dementev/nginx`](https://hub.docker.com/r/dementev/nginx) — [source](https://github.com/vdementev/nginx-docker) | Static sites and SPAs behind that proxy — brotli/zstd siblings, Prometheus stub_status |
+| [`dementev/php-fpm-with-ext`](https://hub.docker.com/r/dementev/php-fpm-with-ext) — [source](https://github.com/vdementev/docker-php-fpm-with-ext) | PHP-FPM and CLI, PHP 7.0 → 8.5, with the extensions most projects reach for |
+| [`dementev/mysql-percona`](https://hub.docker.com/r/dementev/mysql-percona) — [source](https://github.com/vdementev/mysql-percona-docker) | Percona Server for MySQL 8.4 LTS, XtraBackup built in, no root inside |
+| [`dementev/adminer`](https://hub.docker.com/r/dementev/adminer) — [source](https://github.com/vdementev/adminer-docker) | Adminer 6 with every driver it supports, for reaching any of the above |
+
+## Maintainer
+
+Built and maintained by [Vasilii Dementev](https://vasiliidementev.com) at
+[Lotus Web Agency](https://lotuswebagency.com). These images are not a side
+project — they are the base layer under the client and product systems we run,
+which is why they are gated, tested and signed rather than pushed by hand.
+
+Issues and pull requests:
+[github.com/vdementev/angie-docker](https://github.com/vdementev/angie-docker).
+Need this kind of infrastructure built or maintained for your own stack?
+[lotuswebagency.com](https://lotuswebagency.com).
+
+Packaging in this repository is MIT licensed — see [LICENSE](LICENSE). The software
+inside the image keeps its own upstream licenses.
