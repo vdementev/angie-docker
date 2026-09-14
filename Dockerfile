@@ -33,7 +33,8 @@ ARG ANGIE_SIGNING_SHA256=06ef4d35c4f3cf1dfa2dc37751bdd51a95a5fb64390ac11f60587e0
 # socket, target group, or worker user.
 ENV FILE_FOR_GROUP=/var/run/docker.sock \
     DOCKER_GROUP_NAME=docker \
-    ANGIE_USER=angie
+    ANGIE_USER=angie \
+    ANGIE_WORKER_PROCESSES=auto
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY angie-healthcheck.sh /usr/local/bin/angie-healthcheck
@@ -102,7 +103,13 @@ RUN set -eux; \
              /var/cache/angie/fastcgi_temp \
              /var/cache/angie/uwsgi_temp \
              /var/cache/angie/scgi_temp \
-             /var/run/angie; \
+             /var/run/angie \
+             /etc/angie/main.d; \
+    # Main-level include dir. The entrypoint rewrites worker_processes.conf
+    # from ANGIE_WORKER_PROCESSES on every start; this baked default keeps
+    # the old behaviour if /etc/angie is mounted read-only (an empty include
+    # would silently leave Angie on its built-in default of one worker).
+    printf 'worker_processes  auto;\n' > /etc/angie/main.d/worker_processes.conf; \
     chown -R angie:angie /var/cache/angie \
                          /var/log/angie \
                          /var/run/angie; \

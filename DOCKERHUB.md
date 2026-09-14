@@ -44,9 +44,9 @@ The entrypoint reads the GID of `/var/run/docker.sock` and joins the
 working when the host's `docker` group GID differs from the image's
 default (which it usually does).
 
-Mount your own `/etc/angie/angie.conf` instead of using `http.d/` if you
-want full control. You'll need to anyway for the bundled dynamic modules,
-since `load_module` is main-level:
+`load_module` is main-level, so the bundled dynamic modules go into
+`/etc/angie/main.d/*.conf` (mount your own `angie.conf` instead if you want
+to own the whole file):
 
 ```nginx
 load_module modules/ngx_http_brotli_filter_module.so;
@@ -78,8 +78,12 @@ upstream keepalive (`proxy_http_version 1.1` + empty `Connection`),
 first, a shared session cache and `ssl_buffer_size 4k`. No vhost of our
 own, so your `http.d/*.conf` still decides everything user-visible.
 
-One knob it deliberately leaves alone: `worker_processes auto` counts
-*host* CPUs, not your cgroup quota. Set it explicitly whenever you cap CPU.
+`worker_processes` comes from **`ANGIE_WORKER_PROCESSES`**: `auto`
+(default, Angie's own — one worker per host CPU), `cgroup` (derived from
+this container's CPU limit, so `cpus: 2` gets 2 workers instead of one per
+host core), or a literal count. The entrypoint writes it to
+`/etc/angie/main.d/worker_processes.conf`, which the shipped `angie.conf`
+includes — mount your own `angie.conf` and you own the directive instead.
 
 ## Hardening
 
@@ -121,6 +125,7 @@ One knob it deliberately leaves alone: `worker_processes auto` counts
 | `DOCKER_GROUP_NAME`  | `docker`                 | Name of the group created / renumbered to match that GID when no existing group already maps to it.     |
 | `ANGIE_USER`         | `angie`                  | User added to the resolved group (the worker user from `angie.conf`).                                   |
 | `ANGIE_DROP_MASTER`  | _(unset)_                | When `true`, runs the master process as `ANGIE_USER` via `setpriv` instead of root.                     |
+| `ANGIE_WORKER_PROCESSES` | `auto`               | `auto`, `cgroup` (derive from the container's CPU limit), or a literal worker count.                |
 | `ANGIE_SOCKET_CHECK`      | `true`       | Healthcheck probes the mounted socket. `false` skips it.                                           |
 | `ANGIE_HEALTHCHECK_URL`   | _(unset)_    | Extra HTTP probe for the healthcheck, e.g. `http://127.0.0.1/ping`.                                |
 | `ANGIE_SOCKET_WATCH`      | _(unset)_    | `true` stops the container when the socket dies, so the restart policy re-binds it (needs `restart: always`/`unless-stopped`). |

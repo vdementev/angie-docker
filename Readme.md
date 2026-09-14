@@ -93,13 +93,48 @@ main- and http-level tuning applied. No vhost of our own, so your
 | TLS 1.2 + 1.3 only, AES-GCM first, `ssl_session_cache shared:SSL:10m` | 1-RTT handshakes, resumption for the rest, AES-NI-friendly cipher order. |
 | `ssl_buffer_size 4k` | First byte reaches the client without waiting for a 16k record to fill. Costs a little peak throughput. |
 
-Two things the image deliberately does **not** decide for you:
+`listen … reuseport` and `http2 on` / `listen 443 quic` are per-server
+directives, so they stay yours — put them in your own vhost.
 
-- **`worker_processes auto`** counts *host* CPUs, not the container's cgroup
-  quota. Under `cpus: 2` that starts a worker per host core and they fight
-  over two cores' worth of runtime. Set an explicit number whenever you cap CPU.
-- **`listen … reuseport`** and **`http2 on` / `listen 443 quic`** are
-  per-server directives — put them in your own vhost.
+### worker_processes
+
+Angie's `auto` counts *host* CPUs and knows nothing about the container's
+cgroup quota, so a `cpus: 2` container on a 16-core host starts 16 workers
+to fight over two cores' worth of runtime. `ANGIE_WORKER_PROCESSES` picks
+the value instead:
+
+| Value | Result |
+|---|---|
+| `auto` (default) | Angie's own `auto` — one worker per host CPU. Unchanged behaviour. |
+| `cgroup` | Derived from this container's CPU limit: the cgroup (v2 or v1) quota rounded to the nearest whole CPU, capped by the affinity mask so `--cpuset-cpus` counts too. Unlimited falls back to `nproc`. |
+| `<n>` | Literally that many. |
+
+```yaml
+services:
+  angie:
+    image: dementev/angie:latest
+    cpus: 2
+    environment:
+      ANGIE_WORKER_PROCESSES: cgroup   # -> worker_processes 2;
+```
+
+Anything that isn't `auto`, `cgroup` or a positive integer warns and falls
+back to `auto`.
+
+The entrypoint writes the directive to
+`/etc/angie/main.d/worker_processes.conf` on every start (only when the
+value actually changes, so the config watchdog doesn't see it as a deploy),
+and the shipped `angie.conf` pulls it in with
+`include /etc/angie/main.d/*.conf;`. Two consequences:
+
+- **Mount your own `angie.conf` and the variable does nothing** — you own
+  the directive at that point.
+- `main.d/` is a general main-level drop-in dir, which is where the
+  `load_module` lines for the bundled modules can live now instead of
+  forcing you to replace `angie.conf` wholesale.
+
+If `/etc/angie` is mounted read-only the write fails, the entrypoint says
+so loudly, and the baked `worker_processes auto;` stays in effect.
 
 ## Hardening
 
@@ -128,6 +163,7 @@ Two things the image deliberately does **not** decide for you:
 | `DOCKER_GROUP_NAME`  | `docker`                 | Name of the group to renumber / create when no existing GID match.       |
 | `ANGIE_USER`         | `angie`                  | User added to the resolved group.                                        |
 | `ANGIE_DROP_MASTER`  | _(unset)_                | When `true`, runs the master as `ANGIE_USER` via `setpriv` instead of root. |
+| `ANGIE_WORKER_PROCESSES` | `auto`               | `auto`, `cgroup` (derive from the container's CPU limit), or a worker count. |
 
 ### Healthcheck
 
@@ -215,9 +251,8 @@ services:
 ```
 
 Drop your vhosts into `/etc/angie/http.d/*.conf` and you keep the tuned
-`angie.conf` above. Mount your own `/etc/angie/angie.conf` instead if you
-want full control — `load_module` lines for the bundled brotli / zstd /
-cache-purge modules have to go there anyway, since they're main-level:
+`angie.conf` above. `load_module` is main-level, so the bundled modules go
+into `/etc/angie/main.d/*.conf` instead:
 
 ```nginx
 load_module modules/ngx_http_brotli_filter_module.so;
@@ -225,6 +260,9 @@ load_module modules/ngx_http_brotli_static_module.so;
 load_module modules/ngx_http_zstd_filter_module.so;
 load_module modules/ngx_http_cache_purge_module.so;
 ```
+
+Mount your own `/etc/angie/angie.conf` if you'd rather own the whole thing —
+you then own `worker_processes` and the `load_module` lines too.
 
 ## Ports
 
