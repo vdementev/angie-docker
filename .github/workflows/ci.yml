@@ -29,7 +29,7 @@ jobs:
       # rootless master. $IMAGE is set by the reusable workflow.
       test-command: ./tests.sh
       # The apt package is deliberately unpinned, so the version tags are read
-      # back out of the image that just passed the tests: 1.12.1 and 1.12.
+      # back out of the image that just passed the tests: 1.12.2 and 1.12.
       version-command: docker run --rm "$IMAGE" angie -v 2>&1 | sed -n 's|.*[Aa]ngie/\([0-9][0-9.]*\).*|\1|p'
       labels: |
         org.opencontainers.image.title=angie

@@ -5,7 +5,7 @@
 | Tag | Contents |
 |---|---|
 | `latest` | The newest build. Moves on every merge to `main` and on the weekly rebuild. |
-| `1.12.1` | The exact Angie version inside the image. Republished in place (new digest, same tag) while that version is current. |
+| `1.12.2` | The exact Angie version inside the image. Republished in place (new digest, same tag) while that version is current. |
 | `1.12` | The newest patch release of that Angie minor. |
 
 Version tags are read out of the image after it is built and tested, so a tag
