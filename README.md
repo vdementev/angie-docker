@@ -17,7 +17,7 @@ drop your vhosts into `/etc/angie/http.d/` and mount your certs.
 | Tag | Contents |
 |---|---|
 | `latest` | The newest build. |
-| `1.12.1` | The exact Angie version inside the image. |
+| `1.12.2` | The exact Angie version inside the image. |
 | `1.12` | The newest patch of that Angie minor. |
 
 Version tags are read out of the image *after* it is built and tested, so a tag
