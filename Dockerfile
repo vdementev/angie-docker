@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.18
+# syntax=docker/dockerfile:1.28
 # Reusable Angie base image — designed to live IN FRONT of other services
 # (acts as the public-facing reverse proxy / TLS terminator on a docker host).
 #

@@ -8,7 +8,7 @@
 set -euo pipefail
 
 IMAGE="${IMAGE:-}"
-UPSTREAM_IMAGE=busybox:1.36
+UPSTREAM_IMAGE=busybox:1.38
 NETWORK=docker-angie-test-net
 UPSTREAM=docker-angie-test-upstream
 FIXTURE=docker-angie-test-fixture
