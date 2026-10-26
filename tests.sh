@@ -56,6 +56,8 @@ check_eq "no /usr/sbin/angie-debug binary shipped" "" \
   "$(docker run --rm "$IMAGE" sh -c '[ -e /usr/sbin/angie-debug ] && echo present')"
 check_eq "no setuid/setgid binaries anywhere in the image" "" \
   "$(docker run --rm "$IMAGE" find / -xdev -type f -perm /6000 2>/dev/null)"
+check_match "default vhost drops unknown hosts instead of serving the welcome page" 'return +444' \
+  "$(docker run --rm "$IMAGE" cat /etc/angie/http.d/default.conf)"
 
 # ── Fixture: load the bundled modules + a vhost proxying to a real upstream ──
 # The modules ship but nothing loads them by default (see the Dockerfile) —
@@ -175,6 +177,15 @@ proc_user() { # cmdline-prefix -> owning username of the first match
 get() { local url="$1"; shift; curl -sS -i --max-time 5 "$@" "$url"; }
 status() { curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$@"; }
 header() { get "$1" "${@:3}" | tr -d '\r' | awk -v h="$2" 'BEGIN{IGNORECASE=1} $0 ~ "^"h":" {sub("^[^:]*: *",""); print}'; }
+
+info "Catch-all vhost"
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+docker run -d --name "$CONTAINER" -p 127.0.0.1::80 "$IMAGE" >/dev/null
+plain="http://$(docker port "$CONTAINER" 80/tcp | head -1)"
+catch_all_rc() { local rc=0; curl -s -o /dev/null --max-time 5 -H 'Host: scanner.invalid' "$plain" || rc=$?; echo "$rc"; }
+for _ in $(seq 1 30); do [ "$(catch_all_rc)" = 52 ] && break; sleep 1; done
+check_eq "an unmatched Host gets a closed connection, not the welcome page (curl 52)" 52 "$(catch_all_rc)"
+docker rm -f "$CONTAINER" >/dev/null
 
 start
 info "Container health"

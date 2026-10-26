@@ -17,7 +17,7 @@ drop your vhosts into `/etc/angie/http.d/` and mount your certs.
 | Tag | Contents |
 |---|---|
 | `latest` | The newest build. |
-| `1.12.2` | The exact Angie version inside the image. |
+| `1.12.4` | The exact Angie version inside the image. |
 | `1.12` | The newest patch of that Angie minor. |
 
 Version tags are read out of the image *after* it is built and tested, so a tag
@@ -39,8 +39,20 @@ can never claim a version the image does not run. Lifecycle and pinning:
   master-process privilege drop — no `su-exec`/`gosu` binary to vendor.
 
 Angie's own `angie.conf` is replaced with a latency-tuned one (see below).
-Everything else is Angie's packaged default, including its stock
-`http.d/default.conf` welcome vhost.
+The stock `http.d/default.conf` welcome vhost is replaced with a
+catch-all on port 80 that closes the connection (`return 444`) instead of
+serving a page that names the proxy. Like the stock file it sets no
+`default_server`, so it catches unmatched hosts only when it is the default
+for port 80: when none of your vhosts sets `default_server` and none sorts
+before `default.conf`. It does not listen on 443; give your TLS listener a
+`default_server` of its own if you want the same there. Everything else is
+Angie's packaged default.
+
+**Changed in October 2026:** the stock vhost answered any unmatched Host on
+port 80 with Angie's welcome page and 200. That request now gets a closed
+connection. If something probes this image by IP or `localhost` without a
+vhost of yours behind it (an `ANGIE_HEALTHCHECK_URL`, a load-balancer check),
+point it at one of your vhosts, or mount your own `http.d/default.conf`.
 
 ### Why Debian and not Alpine
 
@@ -88,7 +100,7 @@ and logs a warning: a non-root master cannot switch users, so drop it from
 ## Latency tuning
 
 The shipped `/etc/angie/angie.conf` is Angie's packaged file with
-main- and http-level tuning applied. No vhost of our own, so your
+main- and http-level tuning applied. It holds no vhost, so your
 `http.d/*.conf` is still the source of truth — and mounting your own
 `angie.conf` replaces all of it.
 
@@ -375,7 +387,7 @@ front, an app runtime, a database, and a way into it.
 |---|---|
 | **[`dementev/angie`](https://hub.docker.com/r/dementev/angie)** — this image | Public-facing reverse proxy and TLS terminator — Angie, the nginx fork, with brotli, zstd and cache-purge |
 | [`dementev/nginx`](https://hub.docker.com/r/dementev/nginx) — [source](https://github.com/vdementev/nginx-docker) | Static sites and SPAs behind that proxy — brotli/zstd siblings, Prometheus stub_status |
-| [`dementev/php-fpm-with-ext`](https://hub.docker.com/r/dementev/php-fpm-with-ext) — [source](https://github.com/vdementev/docker-php-fpm-with-ext) | PHP-FPM and CLI, PHP 7.0 → 8.5, with the extensions most projects reach for |
+| [`lotuswebagency/php`](https://hub.docker.com/r/lotuswebagency/php) — [source](https://github.com/LotusWebAgency/php) | PHP 7.0 → 8.5 compiled from source on Wolfi, hardened and signed — successor to the deprecated `dementev/php-fpm-with-ext` |
 | [`dementev/mysql-percona`](https://hub.docker.com/r/dementev/mysql-percona) — [source](https://github.com/vdementev/mysql-percona-docker) | Percona Server for MySQL 8.4 LTS, XtraBackup built in, no root inside |
 | [`dementev/adminer`](https://hub.docker.com/r/dementev/adminer) — [source](https://github.com/vdementev/adminer-docker) | Adminer 6 with every driver it supports, for reaching any of the above |
 

@@ -11,8 +11,8 @@
 #
 # Consumers (a compose stack, an orchestrator): mount your own
 # /etc/angie/angie.conf (and http.d/*.conf) plus TLS certs. The shipped
-# angie.conf is the packaged one with latency tuning applied — no vhost
-# of our own beyond Angie's stock default.
+# angie.conf is the packaged one with latency tuning applied; the only
+# vhost is a catch-all that drops requests for unknown hosts.
 
 FROM mirror.gcr.io/library/debian:13-slim
 
@@ -120,9 +120,12 @@ RUN set -eux; \
     chmod 700 /usr/local/bin/docker-entrypoint.sh \
               /usr/local/bin/angie-healthcheck
 
-# Latency-tuned replacement for the packaged angie.conf. Copied after the
-# install so a package upgrade in a derived image can't quietly revert it.
+# Latency-tuned replacement for the packaged angie.conf, and a catch-all
+# vhost that drops unknown hosts in place of the stock welcome page. Copied
+# after the install so a package upgrade in a derived image can't quietly
+# revert them.
 COPY --chmod=0644 angie.conf /etc/angie/angie.conf
+COPY --chmod=0644 http.d/default.conf /etc/angie/http.d/default.conf
 
 # Build-time gate: a typo in the tuning never ships.
 RUN set -eux; angie -t
