@@ -74,9 +74,10 @@ The shipped `angie.conf` carries main- and http-level tuning — `pcre_jit`,
 upstream keepalive (`proxy_http_version 1.1` + empty `Connection`),
 `proxy_connect_timeout 5s`, gzip at level 5, TLS 1.2/1.3 with AES-GCM
 first, a shared session cache and `ssl_buffer_size 4k`. The only vhost
-of our own replaces the stock welcome page with a catch-all that drops
-requests for unknown hosts (`return 444`, no `default_server`), so your
-`http.d/*.conf` still decides everything user-visible.
+of our own replaces the stock welcome page with a port-80 catch-all that
+closes the connection (`return 444`, no `default_server`, so yours wins),
+and your `http.d/*.conf` still decides everything user-visible. Anything
+that probed the welcome page by IP or `localhost` now gets no response.
 
 `worker_processes` comes from **`ANGIE_WORKER_PROCESSES`**: `auto`
 (default, Angie's own — one worker per host CPU), `cgroup` (derived from

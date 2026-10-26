@@ -40,10 +40,19 @@ can never claim a version the image does not run. Lifecycle and pinning:
 
 Angie's own `angie.conf` is replaced with a latency-tuned one (see below).
 The stock `http.d/default.conf` welcome vhost is replaced with a
-catch-all that closes the connection (`return 444`) for any Host none of
-your vhosts claims — a scanner hitting the bare IP gets nothing, not a page
-naming the proxy. It sets no `default_server`, so one of yours that does
-still wins. Everything else is Angie's packaged default.
+catch-all on port 80 that closes the connection (`return 444`) instead of
+serving a page that names the proxy. Like the stock file it sets no
+`default_server`, so it catches unmatched hosts only when it is the default
+for port 80: when none of your vhosts sets `default_server` and none sorts
+before `default.conf`. It does not listen on 443; give your TLS listener a
+`default_server` of its own if you want the same there. Everything else is
+Angie's packaged default.
+
+**Changed in October 2026:** the stock vhost answered any unmatched Host on
+port 80 with Angie's welcome page and 200. That request now gets a closed
+connection. If something probes this image by IP or `localhost` without a
+vhost of yours behind it (an `ANGIE_HEALTHCHECK_URL`, a load-balancer check),
+point it at one of your vhosts, or mount your own `http.d/default.conf`.
 
 ### Why Debian and not Alpine
 
