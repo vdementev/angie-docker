@@ -15,7 +15,7 @@ discovery.
 | Tag | Contents |
 |---|---|
 | `latest` | The newest build — every merge to `main`, plus a weekly rebuild for package updates. |
-| `1.12.2` | The exact Angie version inside the image. |
+| `1.12.4` | The exact Angie version inside the image. |
 | `1.12` | The newest patch of that Angie minor. |
 
 Version tags are read out of the image *after* it is built and tested, so a tag
@@ -73,8 +73,10 @@ The shipped `angie.conf` carries main- and http-level tuning — `pcre_jit`,
 `accept_mutex off`, `aio threads`, buffered access log, `open_file_cache`,
 upstream keepalive (`proxy_http_version 1.1` + empty `Connection`),
 `proxy_connect_timeout 5s`, gzip at level 5, TLS 1.2/1.3 with AES-GCM
-first, a shared session cache and `ssl_buffer_size 4k`. No vhost of our
-own, so your `http.d/*.conf` still decides everything user-visible.
+first, a shared session cache and `ssl_buffer_size 4k`. The only vhost
+of our own replaces the stock welcome page with a catch-all that drops
+requests for unknown hosts (`return 444`, no `default_server`), so your
+`http.d/*.conf` still decides everything user-visible.
 
 `worker_processes` comes from **`ANGIE_WORKER_PROCESSES`**: `auto`
 (default, Angie's own — one worker per host CPU), `cgroup` (derived from

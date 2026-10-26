@@ -17,7 +17,7 @@ drop your vhosts into `/etc/angie/http.d/` and mount your certs.
 | Tag | Contents |
 |---|---|
 | `latest` | The newest build. |
-| `1.12.2` | The exact Angie version inside the image. |
+| `1.12.4` | The exact Angie version inside the image. |
 | `1.12` | The newest patch of that Angie minor. |
 
 Version tags are read out of the image *after* it is built and tested, so a tag
@@ -39,8 +39,11 @@ can never claim a version the image does not run. Lifecycle and pinning:
   master-process privilege drop — no `su-exec`/`gosu` binary to vendor.
 
 Angie's own `angie.conf` is replaced with a latency-tuned one (see below).
-Everything else is Angie's packaged default, including its stock
-`http.d/default.conf` welcome vhost.
+The stock `http.d/default.conf` welcome vhost is replaced with a
+catch-all that closes the connection (`return 444`) for any Host none of
+your vhosts claims — a scanner hitting the bare IP gets nothing, not a page
+naming the proxy. It sets no `default_server`, so one of yours that does
+still wins. Everything else is Angie's packaged default.
 
 ### Why Debian and not Alpine
 
@@ -88,7 +91,7 @@ and logs a warning: a non-root master cannot switch users, so drop it from
 ## Latency tuning
 
 The shipped `/etc/angie/angie.conf` is Angie's packaged file with
-main- and http-level tuning applied. No vhost of our own, so your
+main- and http-level tuning applied. It holds no vhost, so your
 `http.d/*.conf` is still the source of truth — and mounting your own
 `angie.conf` replaces all of it.
 

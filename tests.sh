@@ -56,6 +56,8 @@ check_eq "no /usr/sbin/angie-debug binary shipped" "" \
   "$(docker run --rm "$IMAGE" sh -c '[ -e /usr/sbin/angie-debug ] && echo present')"
 check_eq "no setuid/setgid binaries anywhere in the image" "" \
   "$(docker run --rm "$IMAGE" find / -xdev -type f -perm /6000 2>/dev/null)"
+check_match "default vhost drops unknown hosts instead of serving the welcome page" 'return +444' \
+  "$(docker run --rm "$IMAGE" cat /etc/angie/http.d/default.conf)"
 
 # ── Fixture: load the bundled modules + a vhost proxying to a real upstream ──
 # The modules ship but nothing loads them by default (see the Dockerfile) —
